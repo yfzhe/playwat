@@ -47,6 +47,7 @@
   "dependencies": {
     "@codingame/monaco-languageclient": "^0.17.4",
     "@codingame/monaco-vscode-api": "^11.1.1",
+    "@wasm-language-tools/wasm": "^0.10.7",
     "clsx": "^2.1.1",
     "console-feed": "^3.6.0",
     "jotai": "^2.10.3",

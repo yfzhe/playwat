@@ -32,6 +32,9 @@ importers:
       '@codingame/monaco-vscode-api':
         specifier: ^11.1.1
         version: 11.1.1
+      '@wasm-language-tools/wasm':
+        specifier: ^0.10.7
+        version: 0.10.7
       clsx:
         specifier: ^2.1.1
         version: 2.1.1
@@ -1232,6 +1235,9 @@ packages:
 
   '@vscode/iconv-lite-umd@0.7.0':
     resolution: {integrity: sha512-bRRFxLfg5dtAyl5XyiVWz/ZBPahpOpPrNYnnHpOpUZvam4tKH35wdhP4Kj6PbM0+KdliOsPzbGWpkxcdpNB/sg==}
+
+  '@wasm-language-tools/wasm@0.10.7':
+    resolution: {integrity: sha512-oVLoOop+5G7vwTNtG+e5Fa/dgQGsgaGa4x6s1ovDWKeZuI1Qo7fYNYTVx0ucmD1kUtz1gkE1HR7FFE8nn+nFjw==}
 
   '@webassemblyjs/ast@1.14.1':
     resolution: {integrity: sha512-nuBEDgQfm1ccRp/8bCQrx1frohyufl4JlbMMZ4P1wpeOfDhF6FQkxZJ1b/e+PLwr6X1Nhw6OLme5usuBWYBvuQ==}
@@ -5206,6 +5212,10 @@ snapshots:
       '@types/yargs-parser': 21.0.3
 
   '@vscode/iconv-lite-umd@0.7.0': {}
+
+  '@wasm-language-tools/wasm@0.10.7':
+    dependencies:
+      vscode-languageserver-protocol: 3.17.5
 
   '@webassemblyjs/ast@1.14.1':
     dependencies:

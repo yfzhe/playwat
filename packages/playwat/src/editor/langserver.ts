@@ -3,16 +3,21 @@ import {
   MonacoToProtocolConverter,
   ProtocolToMonacoConverter,
 } from "@codingame/monaco-languageclient";
-import init, { LanguageServer } from "wat-langserver";
+import init, { LanguageService } from "@wasm-language-tools/wasm";
 
 export type LanguageServerWrapper = monaco.IDisposable & {
   commit(uri: string, content: string): void;
   pullDiagnostics(model: monaco.editor.ITextModel): any;
 };
 
+const LANGSERVER_WASM_URL = new URL(
+  "@wasm-language-tools/wasm/binding_wasm_bg.wasm",
+  import.meta.url,
+);
+
 async function startLanguageServer(): Promise<LanguageServerWrapper> {
-  await init();
-  const languageServer = new LanguageServer();
+  await init(LANGSERVER_WASM_URL);
+  const languageService = new LanguageService();
 
   monaco.languages.register({ id: "wat", extensions: [".wat"] });
   monaco.languages.setMonarchTokensProvider("wat", {
@@ -114,7 +119,7 @@ async function startLanguageServer(): Promise<LanguageServerWrapper> {
       triggerCharacters: ["$", "("],
       provideCompletionItems(model, position, context) {
         return p2m.asCompletionResult(
-          languageServer.completion(
+          languageService.completion(
             m2p.asCompletionParams(model, position, context),
           ),
           undefined,
@@ -127,7 +132,7 @@ async function startLanguageServer(): Promise<LanguageServerWrapper> {
     {
       provideDeclaration(model, position) {
         return p2m.asDefinitionResult(
-          languageServer.gotoDeclaration(
+          languageService.gotoDeclaration(
             m2p.asTextDocumentPositionParams(model, position),
           ),
         );
@@ -139,7 +144,7 @@ async function startLanguageServer(): Promise<LanguageServerWrapper> {
     {
       provideDefinition(model, position) {
         return p2m.asDefinitionResult(
-          languageServer.gotoDefinition(
+          languageService.gotoDefinition(
             m2p.asTextDocumentPositionParams(model, position),
           ),
         );
@@ -150,7 +155,7 @@ async function startLanguageServer(): Promise<LanguageServerWrapper> {
     monaco.languages.registerDocumentHighlightProvider("wat", {
       provideDocumentHighlights(model, position) {
         return p2m.asDocumentHighlights(
-          languageServer.documentHighlight(
+          languageService.documentHighlight(
             m2p.asTextDocumentPositionParams(model, position),
           ),
         );
@@ -159,20 +164,28 @@ async function startLanguageServer(): Promise<LanguageServerWrapper> {
   const documentSymbolProvider =
     monaco.languages.registerDocumentSymbolProvider("wat", {
       provideDocumentSymbols(model) {
-        return p2m.asDocumentSymbols(
-          languageServer.documentSymbol(m2p.asDocumentSymbolParams(model)),
+        const docSymbol = languageService.documentSymbol(
+          m2p.asDocumentSymbolParams(model),
         );
+        if (!docSymbol) {
+          return null;
+        } else {
+          return p2m.asDocumentSymbols(docSymbol);
+        }
       },
     });
   const foldingRangeProvider = monaco.languages.registerFoldingRangeProvider(
     "wat",
     {
       provideFoldingRanges(model) {
-        return p2m.asFoldingRanges(
-          languageServer.foldingRange({
-            textDocument: m2p.asTextDocumentIdentifier(model),
-          }),
-        );
+        const foldingRange = languageService.foldingRange({
+          textDocument: m2p.asTextDocumentIdentifier(model),
+        });
+        if (!foldingRange) {
+          return null;
+        } else {
+          return p2m.asFoldingRanges(foldingRange);
+        }
       },
     },
   );
@@ -180,7 +193,7 @@ async function startLanguageServer(): Promise<LanguageServerWrapper> {
     monaco.languages.registerDocumentFormattingEditProvider("wat", {
       provideDocumentFormattingEdits(model, options) {
         return p2m.asTextEdits(
-          languageServer.formatting(
+          languageService.formatting(
             m2p.asDocumentFormattingParams(model, options),
           ),
         );
@@ -189,7 +202,9 @@ async function startLanguageServer(): Promise<LanguageServerWrapper> {
   const hoverProvider = monaco.languages.registerHoverProvider("wat", {
     provideHover(model, position) {
       return p2m.asHover(
-        languageServer.hover(m2p.asTextDocumentPositionParams(model, position)),
+        languageService.hover(
+          m2p.asTextDocumentPositionParams(model, position),
+        ),
       );
     },
   });
@@ -197,7 +212,7 @@ async function startLanguageServer(): Promise<LanguageServerWrapper> {
     monaco.languages.registerDocumentRangeFormattingEditProvider("wat", {
       provideDocumentRangeFormattingEdits(model, range, options) {
         return p2m.asTextEdits(
-          languageServer.rangeFormatting(
+          languageService.rangeFormatting(
             m2p.asDocumentRangeFormattingParams(model, range, options),
           ),
         );
@@ -206,7 +221,7 @@ async function startLanguageServer(): Promise<LanguageServerWrapper> {
   const referenceProvider = monaco.languages.registerReferenceProvider("wat", {
     provideReferences(model, position, context) {
       return p2m.asReferences(
-        languageServer.findReferences(
+        languageService.findReferences(
           m2p.asReferenceParams(model, position, context),
         ),
       );
@@ -214,15 +229,14 @@ async function startLanguageServer(): Promise<LanguageServerWrapper> {
   });
   const renameProvider = monaco.languages.registerRenameProvider("wat", {
     provideRenameEdits(model, position, newName) {
-      const result = languageServer.rename(
+      const result = languageService.rename(
         m2p.asRenameParams(model, position, newName),
       );
-      if (result.Err) {
-        return { edits: [], rejectReason: result.Err };
+      if (!result) {
+        return { edits: [] };
       } else {
-        const { edits }: monaco.languages.WorkspaceEdit = p2m.asWorkspaceEdit(
-          result.Ok,
-        );
+        const { edits }: monaco.languages.WorkspaceEdit =
+          p2m.asWorkspaceEdit(result);
         edits.forEach((edit) => {
           // @ts-expect-error
           edit.versionId = model.getVersionId();
@@ -233,14 +247,10 @@ async function startLanguageServer(): Promise<LanguageServerWrapper> {
       }
     },
     resolveRenameLocation(model, position) {
-      const range = p2m.asRange(
-        languageServer.prepareRename(
-          m2p.asTextDocumentPositionParams(model, position),
-        ),
+      const prepareRename = languageService.prepareRename(
+        m2p.asTextDocumentPositionParams(model, position),
       );
-      if (range) {
-        return { range, text: model.getValueInRange(range) };
-      } else {
+      if (!prepareRename) {
         return {
           range: new monaco.Range(
             position.lineNumber,
@@ -251,6 +261,20 @@ async function startLanguageServer(): Promise<LanguageServerWrapper> {
           text: "",
           rejectReason: "This element can't be renamed.",
         };
+      } else if ("defaultBehavior" in prepareRename) {
+        return undefined;
+      } else if ("placeholder" in prepareRename) {
+        const range = p2m.asRange(prepareRename.range);
+        return {
+          range,
+          text: prepareRename.placeholder,
+        };
+      } else {
+        const range = p2m.asRange(prepareRename);
+        return {
+          range: prepareRename,
+          text: model.getValueInRange(range),
+        };
       }
     },
   });
@@ -260,7 +284,7 @@ async function startLanguageServer(): Promise<LanguageServerWrapper> {
       signatureHelpTriggerCharacters: ["(", ")"],
       provideSignatureHelp(model, position) {
         return p2m.asSignatureHelpResult(
-          languageServer.signatureHelp(
+          languageService.signatureHelp(
             m2p.asTextDocumentPositionParams(model, position),
           ),
         );
@@ -271,7 +295,7 @@ async function startLanguageServer(): Promise<LanguageServerWrapper> {
     monaco.languages.registerTypeDefinitionProvider("wat", {
       provideTypeDefinition(model, position) {
         return p2m.asDefinitionResult(
-          languageServer.gotoTypeDefinition(
+          languageService.gotoTypeDefinition(
             m2p.asTextDocumentPositionParams(model, position),
           ),
         );
@@ -280,10 +304,10 @@ async function startLanguageServer(): Promise<LanguageServerWrapper> {
 
   return {
     commit(uri, content) {
-      languageServer.commit(uri, content);
+      languageService.commit(uri, content);
     },
     pullDiagnostics(model) {
-      return languageServer.pullDiagnostics({
+      return languageService.pullDiagnostics({
         textDocument: m2p.asTextDocumentIdentifier(model),
       });
     },
@@ -302,7 +326,7 @@ async function startLanguageServer(): Promise<LanguageServerWrapper> {
       renameProvider.dispose();
       signatureHelpProvider.dispose();
       typeDefinitionProvider.dispose();
-      languageServer.free();
+      languageService.free();
     },
   };
 }
